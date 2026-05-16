@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #08090c;
+  color: #e5e7eb;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #1b1f28; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #262b36; }
+
+/* Recharts: make tooltips match the dark theme */
+.recharts-tooltip-wrapper:focus { outline: none; }
