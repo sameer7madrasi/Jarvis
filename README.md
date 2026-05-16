@@ -84,31 +84,54 @@ All optional in V1 — if missing, the app falls back to in-memory mock data.
 ## 4. Running locally
 
 ```bash
-npm run dev        # Next.js dev server (http://localhost:3000)
-npm run build      # production build
-npm run start      # serve the production build
-npm run typecheck  # tsc --noEmit
-npm run lint       # next lint
+npm run dev         # Next.js dev server (http://localhost:3000)
+npm run build       # production build
+npm run start       # serve the production build
+npm run typecheck   # tsc --noEmit
+npm run lint        # next lint
+npm run check:db    # verify schema + RLS + read/write against live Supabase
+npm run setup:live  # interactive: prints fix-up SQL, polls until applied, runs smoke test
 ```
 
 ## 5. Applying the Supabase schema
 
-Option A — Supabase Dashboard:
-
-1. Create a new Supabase project.
-2. Open **SQL Editor → New query**.
-3. Paste the contents of [`supabase/schema.sql`](./supabase/schema.sql).
-4. Run.
-
-Option B — Supabase CLI:
+Option A — interactive (recommended the first time):
 
 ```bash
-supabase db execute --file supabase/schema.sql
+npm run setup:live
 ```
 
-The schema creates the `accounts`, `transactions`, and `monthly_snapshots` tables, plus a small set of seed accounts. Categories live in code (`lib/categories.ts`) for V1 — easy to promote to a `categories` table later.
+This walks you through:
 
-> ⚠️ V1 has **no auth and no RLS policies**. Only run this against a personal/private project until auth is added in a later phase.
+1. Probing your live project to see what's missing.
+2. Printing the exact SQL to paste (and the direct SQL editor URL).
+3. Polling every 3s until you've applied it.
+4. Running an end-to-end smoke test (insert income / expense / investment, read, delete).
+
+Option B — manual:
+
+1. Open **SQL Editor → New query** in your Supabase project.
+2. Paste the contents of [`supabase/schema.sql`](./supabase/schema.sql) → Run.
+3. Paste the contents of [`supabase/fix-rls-and-seed.sql`](./supabase/fix-rls-and-seed.sql) → Run.
+   (Supabase auto-enables RLS on new tables — V1 has no auth, so we disable it. The same file idempotently re-seeds the default accounts.)
+4. Run `npm run check:db` to verify.
+
+> V1 has **no auth and no RLS policies**. Only run this against a personal/private project until auth is added in a later phase.
+
+## 5a. Deploying to Vercel (optional)
+
+```bash
+# 1. Push to GitHub (create the repo first at https://github.com/new)
+git remote add origin git@github.com:<you>/capital-os.git
+git push -u origin main
+
+# 2. Import at https://vercel.com/new
+#    Add these env vars in the Vercel project settings:
+#      - NEXT_PUBLIC_SUPABASE_URL
+#      - NEXT_PUBLIC_SUPABASE_ANON_KEY
+#      - SUPABASE_SERVICE_ROLE_KEY  (mark as Sensitive)
+#    Click Deploy. Build runs `next build` (verified passing).
+```
 
 ## 6. Next recommended phase
 
