@@ -1,4 +1,4 @@
--- Capital OS – V1 fix-up
+-- Jarvis – V1 fix-up
 -- Supabase auto-enables RLS on new tables created via the dashboard. V1 has
 -- no auth, so we explicitly disable RLS and (idempotently) re-seed accounts.
 --

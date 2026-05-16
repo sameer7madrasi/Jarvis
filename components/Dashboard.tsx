@@ -224,7 +224,7 @@ function Header({ usingMock, monthIso }: { usingMock: boolean; monthIso: string 
       <div>
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-ink-400">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-500" />
-          Capital OS
+          Jarvis
         </div>
         <h1 className="mt-1 text-3xl font-semibold text-ink-100">
           Money Command Center
@@ -262,7 +262,7 @@ function LoadingState() {
 function Footer() {
   return (
     <footer className="pt-6 text-center text-xs text-ink-500">
-      Capital OS · V1 · built with Next.js, Supabase &amp; Recharts.
+      Jarvis · V1 · built with Next.js, Supabase &amp; Recharts.
       {/* TODO: wire Plaid sync for automatic transactions. */}
       {/* TODO: add AI insights (monthly review, anomaly detection, allocation suggestions). */}
     </footer>

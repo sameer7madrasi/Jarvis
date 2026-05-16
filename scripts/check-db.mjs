@@ -2,7 +2,7 @@
 /**
  * scripts/check-db.mjs
  *
- * Verifies the live Supabase project for Capital OS V1:
+ * Verifies the live Supabase project for Jarvis V1:
  *   1. .env.local is present + parseable
  *   2. The supabase URL is reachable
  *   3. accounts / transactions / monthly_snapshots tables exist
@@ -138,7 +138,7 @@ async function main() {
   }
 
   head("4. RLS / write check (anon)");
-  const sentinel = `__capitalos_check_${Date.now()}`;
+  const sentinel = `__jarvis_check_${Date.now()}`;
   const insertPayload = {
     date: new Date().toISOString().slice(0, 10),
     merchant: sentinel,
@@ -193,7 +193,7 @@ async function main() {
 
   head("Result");
   ok(
-    "Supabase is live and Capital OS can read + write through the publishable key.",
+    "Supabase is live and Jarvis can read + write through the publishable key.",
   );
   console.log(`\nNext: ${c.bold}npm run dev${c.reset} and look for the "Connected to Supabase" pill.\n`);
 }

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Capital OS — Personal Wealth Command Center",
+  title: "Jarvis — Money Command Center",
   description:
-    "A clean personal finance dashboard built around the Million by 30 goal.",
+    "Personal capital allocation dashboard for the Million by 30 plan.",
 };
 
 export default function RootLayout({

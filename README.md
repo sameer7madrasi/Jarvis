@@ -1,6 +1,6 @@
-# Capital OS — Money Command Center
+# Jarvis — Money Command Center
 
-A clean, full‑stack personal finance dashboard built around the **"A Million by 30"** goal. Think of it less as a budgeting app and more as a **personal capital allocation cockpit**: it tracks how you earn, spend, save, and invest so you can see the surplus you're routing into wealth each month.
+Jarvis is a clean, full‑stack personal finance dashboard built around the **"A Million by 30"** goal. Think of it less as a budgeting app and more as a **personal capital allocation cockpit**: it tracks how you earn, spend, save, and invest so you can see the surplus you're routing into wealth each month.
 
 V1 is intentionally narrow: manual entry, a useful dashboard, and a clean foundation.
 
@@ -122,7 +122,7 @@ Option B — manual:
 
 ```bash
 # 1. Push to GitHub (create the repo first at https://github.com/new)
-git remote add origin git@github.com:<you>/capital-os.git
+git remote add origin git@github.com:<you>/Jarvis.git
 git push -u origin main
 
 # 2. Import at https://vercel.com/new

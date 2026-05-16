@@ -1,4 +1,4 @@
--- Capital OS – Supabase schema (V1)
+-- Jarvis – Supabase schema (V1)
 -- Apply via Supabase Dashboard → SQL editor, or `supabase db push`.
 --
 -- This schema is intentionally minimal for V1. No auth, no RLS policies yet –

@@ -2,7 +2,7 @@
 /**
  * scripts/setup-live.mjs
  *
- * Interactive helper that takes Capital OS from "schema applied but RLS on"
+ * Interactive helper that takes Jarvis from "schema applied but RLS on"
  * to a fully working live V1 by:
  *
  *   1. Detecting RLS / seed issues against the live project
@@ -75,7 +75,7 @@ async function probe(anon, admin) {
   }
 
   // Anon write probe with unique sentinel
-  const sentinel = `__capitalos_probe_${Date.now()}`;
+  const sentinel = `__jarvis_probe_${Date.now()}`;
   const { error: insErr } = await anon
     .from("transactions")
     .insert({
@@ -98,7 +98,7 @@ async function probe(anon, admin) {
 
 async function smokeTest(anon, accountId) {
   head("Smoke test");
-  const tag = `capitalos-smoke-${Date.now()}`;
+  const tag = `jarvis-smoke-${Date.now()}`;
   const today = new Date().toISOString().slice(0, 10);
   const rows = [
     {
@@ -248,7 +248,7 @@ async function main() {
   }
 
   head("Result");
-  ok("Capital OS is live: schema applied, RLS configured, anon read+write proven.");
+  ok("Jarvis is live: schema applied, RLS configured, anon read+write proven.");
   console.log(
     `\nNext: ${c.bold}npm run dev${c.reset} and look for the "Connected to Supabase" pill.\n`,
   );
