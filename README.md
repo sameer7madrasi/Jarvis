@@ -1,150 +1,162 @@
-# Jarvis — Money Command Center
+# Jarvis — Financial Storyteller
 
-Jarvis is a clean, full‑stack personal finance dashboard built around the **"A Million by 30"** goal. Think of it less as a budgeting app and more as a **personal capital allocation cockpit**: it tracks how you earn, spend, save, and invest so you can see the surplus you're routing into wealth each month.
+Jarvis is a personal capital-allocation cockpit built around the **"A Million by 30"** goal, now with two configurable AI personas on top of the original V1 dashboard:
 
-V1 is intentionally narrow: manual entry, a useful dashboard, and a clean foundation.
+- **JarvisHome** — your good-buddy copilot for personal finances. Talks to the same transactions you enter, your goals, and your spending shape.
+- **JarvisFinance** — your markets + research blood brother. Pulls live quotes, fundamentals and news against your portfolio + watchlist, and ghost-writes article drafts.
+
+V1 was the dashboard. **V2 is the storyteller** — the same dark, premium UI, plus chat (drawer + full-page), a sidebar nav, and a drafts workspace.
 
 ## Stack
 
 - **Next.js 14** (App Router) + **TypeScript**
-- **Tailwind CSS** with a custom dark, premium palette
-- **Supabase / Postgres** for persistence (with a local mock‑data fallback)
-- **Recharts** for charts
-- **lucide-react** for icons
+- **Tailwind CSS** with a custom dark palette
+- **Supabase / Postgres** for persistence (mock-data fallback when env vars are missing)
+- **Vercel AI SDK** (`ai`, `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/react`) for provider-agnostic streaming + tool calling
+- **yahoo-finance2** for free market data (Polygon stub included)
+- **Recharts** + **react-markdown** + **lucide-react** for visualization
 
-## V1 features
+## What ships in V2
 
-- **Transaction entry** — date, merchant/source, amount, type (income / expense / investment), category, account, optional notes.
-- **Transaction table** — recent transactions with type / category / month filters and a delete action. Expenses, income and investments are visually distinct.
-- **Dashboard metrics** — monthly income, expenses, net cash flow, savings rate, total invested, and a rough net‑worth placeholder.
-- **Charts** — spending by category (donut), income vs expenses (bar, 6 months), investment contributions (area + cumulative).
-- **Mindset panel** — a subtle "A Million by 30" progress bar tied to the net‑worth estimate.
-- **Mock‑data fallback** — if Supabase env vars aren't set, the UI still renders with realistic mock data so you can demo it locally instantly.
+### Phase 2A — JarvisHome (personal copilot)
+
+- Provider-agnostic AI layer in `lib/ai/` — picks OpenAI vs Anthropic per-persona, with offline fallback when no key is set.
+- Persona registry in `lib/personas/` — `home` + `finance` with system prompts, allow-listed tools, default models, and color identities.
+- JarvisHome tools in `lib/tools/transactions.ts` — `list_transactions`, `monthly_summary`, `top_categories`, `goal_progress`, `list_accounts`. All wrap the existing `lib/analytics.ts` + `lib/data.ts` primitives so the AI sees real data, not stubs.
+- Streaming chat endpoint at `app/api/chat/route.ts` with per-persona tool allow-listing and auto-persistence.
+- Chat UI: `ChatPanel`, `ChatMessage`, `ChatInput`, `ToolCallChip`, `PersonaAvatar`, `CostChip` — themed to match the dashboard.
+- Cmd+K-triggered `ChatDrawer` overlays any page; persona switcher built-in.
+- Full-page experience at `/home` with a left rail of past conversations.
+- Chat persistence in `chat_conversations` + `chat_messages` so threads survive reloads.
+
+### Phase 2B — JarvisFinance (markets + research)
+
+- New tables: `holdings`, `watchlist`, `drafts` (Supabase) plus realistic in-memory mocks.
+- Market data layer in `lib/market/` with a `MarketDataProvider` interface, Yahoo Finance default, and a `polygon` stub for the upgrade path.
+- Server-side market proxy at `app/api/market/route.ts` so paid-provider keys never reach the client.
+- JarvisFinance tools: `list_holdings`, `portfolio_value`, `position_pnl`, `list_watchlist`, `add_to_watchlist`, `get_quote`, `get_history`, `get_news`, `list_drafts`, `create_draft`, `append_to_draft`.
+- Full-page `/finance` with Portfolio / Watchlist / Drafts widgets on the left rail and JarvisFinance chat on the right.
+
+### Phase 2C — Drafts workspace
+
+- `/finance/drafts` index page and `/finance/drafts/[slug]` editor.
+- Side-by-side markdown source + rendered preview with autosave.
+- One-click "Ask JarvisFinance" launcher that opens the chat drawer pre-set to the finance persona.
+
+### Cross-cutting polish
+
+- Sidebar nav (`Money` / `JarvisHome` / `JarvisFinance` + Drafts + Personas).
+- `/settings/personas` shows provider status, model, allowed tools, and the full system prompt per persona.
+- `usage_log` table + per-reply token accounting via the chat route's `onFinish`.
+- Mock-data fallback for every new table — the app stays demo-able with no Supabase, no AI key, no market provider.
 
 ## Folder structure
 
 ```
 .
 ├── app/
-│   ├── globals.css            # Tailwind base + theme overrides
-│   ├── layout.tsx             # Root layout (dark theme)
-│   └── page.tsx               # Dashboard entry
+│   ├── api/
+│   │   ├── chat/route.ts              # Streaming chat (tool loop)
+│   │   ├── conversations/route.ts     # List threads / messages
+│   │   ├── drafts/[slug]/route.ts     # GET / PATCH a draft
+│   │   └── market/route.ts            # Server-side market proxy
+│   ├── finance/
+│   │   ├── drafts/[slug]/page.tsx     # Drafts editor
+│   │   ├── drafts/page.tsx            # Drafts index
+│   │   └── page.tsx                   # JarvisFinance shell
+│   ├── home/page.tsx                  # JarvisHome shell
+│   ├── settings/personas/page.tsx     # Persona settings
+│   ├── layout.tsx                     # Root + AppShell
+│   └── page.tsx                       # Money dashboard (V1)
 ├── components/
-│   ├── Dashboard.tsx          # Orchestrator (state, layout)
-│   ├── MetricCard.tsx
-│   ├── MindsetPanel.tsx       # "A Million by 30" panel
-│   ├── TransactionForm.tsx
-│   ├── TransactionTable.tsx
-│   ├── SpendingByCategoryChart.tsx
-│   ├── IncomeExpenseChart.tsx
-│   ├── InvestmentChart.tsx
-│   ├── charts/ChartTooltip.tsx
-│   └── ui/                    # Card, Button, Input/Select/Textarea, Label
+│   ├── AppShell.tsx, Sidebar.tsx, Dashboard.tsx, MetricCard.tsx, …  # V1 + nav
+│   ├── chat/                          # ChatPanel/Message/Input/Drawer/Page/Avatar/CostChip/ToolCallChip
+│   └── finance/                       # PortfolioTable, WatchlistCard, DraftList, DraftEditor
 ├── lib/
-│   ├── analytics.ts           # Pure functions: monthlyTotals, spendingByCategory, monthlySeries…
-│   ├── categories.ts          # Default income / expense / investment categories
-│   ├── data.ts                # Data-access layer: Supabase OR mock fallback
-│   ├── mock.ts                # Realistic in-memory mock dataset
-│   ├── supabase.ts            # Supabase client + env detection
-│   ├── types.ts               # Account, Transaction, MonthlySnapshot, …
-│   └── utils.ts               # cn(), currency / percent / date formatters
+│   ├── ai/                            # provider.ts, cost.ts, offline.ts, index.ts
+│   ├── personas/                      # types, home, finance, index
+│   ├── tools/                         # transactions, portfolio, market, drafts, runner (registry)
+│   ├── market/                        # provider, yahoo, polygon, index
+│   ├── data.ts, data-v2.ts            # V1 + V2 data-access (Supabase or mock)
+│   ├── mock.ts, mock-v2.ts            # In-memory mock stores
+│   ├── analytics.ts, categories.ts    # V1 primitives reused by Home tools
+│   └── types.ts, types-v2.ts          # Domain types
 └── supabase/
-    └── schema.sql             # Postgres schema + seed accounts
+    ├── schema.sql + fix-rls-and-seed.sql   # V1
+    └── schema_v2.sql                        # V2 (holdings, watchlist, drafts, chat_*, persona_configs, usage_log)
 ```
 
-## 1. Files created
-
-- Configuration: `package.json`, `tsconfig.json`, `next.config.mjs`, `tailwind.config.ts`, `postcss.config.mjs`, `.eslintrc.json`, `.gitignore`, `.env.example`, `next-env.d.ts`
-- App: `app/layout.tsx`, `app/page.tsx`, `app/globals.css`
-- Components: `components/Dashboard.tsx`, `MetricCard.tsx`, `MindsetPanel.tsx`, `TransactionForm.tsx`, `TransactionTable.tsx`, `SpendingByCategoryChart.tsx`, `IncomeExpenseChart.tsx`, `InvestmentChart.tsx`, `charts/ChartTooltip.tsx`, `ui/Card.tsx`, `ui/Button.tsx`, `ui/Field.tsx`
-- Lib: `lib/types.ts`, `lib/categories.ts`, `lib/utils.ts`, `lib/analytics.ts`, `lib/supabase.ts`, `lib/mock.ts`, `lib/data.ts`
-- Database: `supabase/schema.sql`
-
-## 2. Setup steps
+## Setup
 
 ```bash
-# from the project root
 npm install
-cp .env.example .env.local   # optional — leave blank to use mock data
+cp .env.example .env.local   # fill in any vars you have — every section is optional
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:3000>. Use `⌘K` anywhere to open the chat drawer.
 
-## 3. Required environment variables
+## Environment variables
 
-All optional in V1 — if missing, the app falls back to in-memory mock data.
+All optional — missing ones degrade gracefully.
 
-| Variable | Where to find it | Required for |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project → Settings → API | Persisting data |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project → Settings → API | Persisting data |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API | Reserved for future server-only writes |
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Live Supabase (else mock data) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Reserved for privileged server-side writes |
+| `OPENAI_API_KEY` | Enables OpenAI-backed personas |
+| `ANTHROPIC_API_KEY` | Enables Anthropic-backed personas |
+| `JARVIS_AI_PROVIDER` | Optional global override (`openai` \| `anthropic`) — useful when you only have one key |
+| `JARVIS_MARKET_PROVIDER` | `yahoo` (default, no key) or `polygon` |
+| `POLYGON_API_KEY` | Used by the Polygon market provider once implemented |
 
-## 4. Running locally
+## Applying the database
+
+V1 first (one-time):
 
 ```bash
-npm run dev         # Next.js dev server (http://localhost:3000)
+npm run setup:live   # interactive: applies schema + fix-up, runs smoke test
+```
+
+V2 (after V1):
+
+1. Supabase Dashboard → SQL Editor → New query.
+2. Paste [`supabase/schema_v2.sql`](./supabase/schema_v2.sql) → Run.
+3. Refresh `/finance` — Portfolio/Watchlist/Drafts now read live tables.
+
+Both schemas are idempotent. RLS stays off in V2 (still single-user); the migration path is documented inside `schema_v2.sql` for when auth lands.
+
+## Scripts
+
+```bash
+npm run dev         # Next.js dev server
 npm run build       # production build
 npm run start       # serve the production build
 npm run typecheck   # tsc --noEmit
 npm run lint        # next lint
-npm run check:db    # verify schema + RLS + read/write against live Supabase
-npm run setup:live  # interactive: prints fix-up SQL, polls until applied, runs smoke test
+npm run check:db    # verify V1 schema + RLS + read/write against live Supabase
+npm run setup:live  # interactive V1 schema apply + smoke test
 ```
 
-## 5. Applying the Supabase schema
-
-Option A — interactive (recommended the first time):
+## Deploying to Vercel
 
 ```bash
-npm run setup:live
-```
-
-This walks you through:
-
-1. Probing your live project to see what's missing.
-2. Printing the exact SQL to paste (and the direct SQL editor URL).
-3. Polling every 3s until you've applied it.
-4. Running an end-to-end smoke test (insert income / expense / investment, read, delete).
-
-Option B — manual:
-
-1. Open **SQL Editor → New query** in your Supabase project.
-2. Paste the contents of [`supabase/schema.sql`](./supabase/schema.sql) → Run.
-3. Paste the contents of [`supabase/fix-rls-and-seed.sql`](./supabase/fix-rls-and-seed.sql) → Run.
-   (Supabase auto-enables RLS on new tables — V1 has no auth, so we disable it. The same file idempotently re-seeds the default accounts.)
-4. Run `npm run check:db` to verify.
-
-> V1 has **no auth and no RLS policies**. Only run this against a personal/private project until auth is added in a later phase.
-
-## 5a. Deploying to Vercel (optional)
-
-```bash
-# 1. Push to GitHub (create the repo first at https://github.com/new)
-git remote add origin git@github.com:<you>/Jarvis.git
 git push -u origin main
-
-# 2. Import at https://vercel.com/new
-#    Add these env vars in the Vercel project settings:
-#      - NEXT_PUBLIC_SUPABASE_URL
-#      - NEXT_PUBLIC_SUPABASE_ANON_KEY
-#      - SUPABASE_SERVICE_ROLE_KEY  (mark as Sensitive)
-#    Click Deploy. Build runs `next build` (verified passing).
+# In Vercel project settings, add the env vars above.
+# yahoo-finance2 is declared in serverComponentsExternalPackages — no extra config needed.
 ```
 
-## 6. Next recommended phase
+## What's next (Phase 3 — deferred)
 
-In rough priority order:
+Logged in [`jarvis_financial_storyteller_plan`](./.cursor/plans/jarvis_financial_storyteller_plan_1f3ea263.plan.md):
 
-1. **Auth + RLS** — Supabase magic-link auth, add `user_id` to all tables, lock down with row-level security.
-2. **Categories table** — promote categories from code to a `categories` table with colors and per-user customization.
-3. **Plaid integration** — automatic bank/credit/brokerage sync (see `TODO`s sprinkled in `lib/supabase.ts` and the app footer).
-4. **Real holdings & net worth** — `holdings` table (symbol, qty, cost basis) + daily price job to replace the V1 net-worth placeholder.
-5. **AI insights** — monthly review, anomaly detection, savings/allocation suggestions written to an `ai_insights` table.
-6. **Recurring transactions** — model rent, salary, subscriptions as recurring rules so the dashboard projects forward.
-7. **Goals & scenarios** — multiple goals beyond Million by 30, with "what if I invest +$500/mo" scenario sliders.
+1. **Auth + RLS** — magic-link, add `user_id` to every table, lock down policies.
+2. **Publishing surface** — promote drafts to a public `posts` table; `/jarvis/[author]/[slug]` reader.
+3. **Comments / reactions / subscriptions** — social layer atop the storyteller.
+4. **Plaid integration** — replace manual transaction entry for the Money dashboard.
+5. **Real holdings history** — daily price snapshots for true point-in-time net worth.
+6. **Persona editor** — UI to override `persona_configs` (already in `schema_v2.sql`).
 
 ---
 
-Built to feel like a wealth command center, not a budgeting app. Keep shipping.
+Built to feel like a wealth + research command center, not a budgeting app. Keep shipping.

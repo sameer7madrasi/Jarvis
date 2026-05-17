@@ -85,7 +85,7 @@ export function Dashboard() {
   const netWorth = React.useMemo(() => estimateNetWorth(transactions), [transactions]);
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <Header usingMock={usingMock} monthIso={monthIso} />
 
       {error && (
@@ -214,7 +214,7 @@ export function Dashboard() {
           <Footer />
         </>
       )}
-    </main>
+    </div>
   );
 }
 
@@ -222,12 +222,11 @@ function Header({ usingMock, monthIso }: { usingMock: boolean; monthIso: string 
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-ink-400">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-500" />
-          Jarvis
+        <div className="text-xs font-medium uppercase tracking-[0.18em] text-ink-400">
+          Money
         </div>
         <h1 className="mt-1 text-3xl font-semibold text-ink-100">
-          Money Command Center
+          Command Center
         </h1>
         <p className="mt-1 text-sm text-ink-400">
           {monthLabel(monthIso)} · personal capital allocation for the Million by 30 plan.
