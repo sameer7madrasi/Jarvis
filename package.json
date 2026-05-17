@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:db": "node scripts/check-db.mjs",
+    "check:v2": "node scripts/check-v2.mjs",
     "setup:live": "node scripts/setup-live.mjs"
   },
   "dependencies": {

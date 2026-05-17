@@ -122,7 +122,11 @@ V2 (after V1):
 
 1. Supabase Dashboard → SQL Editor → New query.
 2. Paste [`supabase/schema_v2.sql`](./supabase/schema_v2.sql) → Run.
-3. Refresh `/finance` — Portfolio/Watchlist/Drafts now read live tables.
+3. Paste [`supabase/fix-v2-rls-and-seed.sql`](./supabase/fix-v2-rls-and-seed.sql) → Run.
+   (Supabase auto-enables RLS on newly-created tables — same gotcha as V1. This script
+   disables it and idempotently seeds `holdings` / `watchlist` / one starter `draft` so
+   the anon key can read them.)
+4. `npm run check:v2` — verifies the schema, seeds, chat persistence and OpenAI/Anthropic keys.
 
 Both schemas are idempotent. RLS stays off in V2 (still single-user); the migration path is documented inside `schema_v2.sql` for when auth lands.
 
@@ -135,6 +139,7 @@ npm run start       # serve the production build
 npm run typecheck   # tsc --noEmit
 npm run lint        # next lint
 npm run check:db    # verify V1 schema + RLS + read/write against live Supabase
+npm run check:v2    # verify V2 schema + seeds + chat persistence + AI provider probe
 npm run setup:live  # interactive V1 schema apply + smoke test
 ```
 
