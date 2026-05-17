@@ -6,9 +6,10 @@
  * user-supplied overrides stored in Supabase `persona_configs`.
  */
 
-import type { LucideIcon } from "lucide-react";
-
 export type PersonaId = "home" | "finance";
+
+/** Symbolic icon name resolved client-side to a Lucide component. */
+export type PersonaIconName = "home" | "trending-up";
 
 export interface Persona {
   id: PersonaId;
@@ -21,8 +22,12 @@ export interface Persona {
   hex: string;
   /** Model spec like "openai:gpt-4o-mini" — resolved via lib/ai/provider.ts */
   defaultModel: string;
-  /** Lucide icon used as the persona avatar in V1 (before user uploads PFP) */
-  Icon: LucideIcon;
+  /**
+   * Icon identifier (NOT the React component) — kept as a string so the
+   * persona object stays JSON-serializable when passed from server components
+   * to client components in Next's App Router.
+   */
+  iconName: PersonaIconName;
   /** Multi-line system prompt */
   systemPrompt: string;
   /** Whitelist of tool names this persona is allowed to call */

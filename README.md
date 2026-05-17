@@ -50,12 +50,25 @@ V1 was the dashboard. **V2 is the storyteller** — the same dark, premium UI, p
 - `usage_log` table + per-reply token accounting via the chat route's `onFinish`.
 - Mock-data fallback for every new table — the app stays demo-able with no Supabase, no AI key, no market provider.
 
+### Phase 3 — Bank sync (Plaid + CSV)
+
+- **Plaid Link** for one-click OAuth into Bank of America (and every US institution Plaid supports). OAuth completes on [`app/banks/return/page.tsx`](./app/banks/return/page.tsx). Set `PLAID_REDIRECT_URI` to an **HTTPS** URL ending in `/banks/return` (Production Plaid does not allow `http://localhost`; use ngrok or a deployed host).
+- **Read-only Plaid posture:** Link requests **transactions** + **investments** only (no Plaid Auth ACH numbers, no payments/transfers). The server only calls read-style Plaid endpoints plus `item/remove` on disconnect. See [Plaid read-only posture](#plaid-read-only-posture) below.
+- New table `linked_items` holds each institution login. Access tokens are AES-256-GCM encrypted (`lib/banks/encryption.ts`) using `JARVIS_ENCRYPTION_KEY` before they ever touch the database.
+- `lib/banks/sync.ts` pulls **transactions** via `/transactions/sync` (cursor-based, incremental), **holdings** via `/investments/holdings/get`, and accounts via `/accounts/get`. Plaid's Personal Finance Category taxonomy is collapsed to the Jarvis categories in `lib/banks/categories.ts`.
+- **Webhook** at `/api/banks/webhook` verifies Plaid's signed JWT (ES256) and re-triggers sync on `SYNC_UPDATES_AVAILABLE`, `HOLDINGS:DEFAULT_UPDATE`, `ITEM:ERROR`, `ITEM:LOGIN_REQUIRED`.
+- **CSV fallback** parser (`lib/banks/csv.ts`) handles Bank of America's actual export plus any Date/Description/Amount table. Same `external_id` dedupe pattern as Plaid (`csv:<accountId>:<date>:<cents>:<normalized-description>`).
+- New **JarvisHome tools** `list_linked_accounts` and `sync_bank_accounts` so the assistant can pull fresh data on demand.
+- "Connections" card on the Money dashboard surfaces linked institutions, last-synced time, status (`active` / `login_required` / `error`), plus "Sync now" + "Disconnect" actions.
+- `npm run check:banks` verifies the env, the v3 schema, the encryption key round-trips, and that Plaid answers `/institutions/get`.
+
 ## Folder structure
 
 ```
 .
 ├── app/
 │   ├── api/
+│   │   ├── banks/                     # link-token, exchange, sync, webhook, csv, items
 │   │   ├── chat/route.ts              # Streaming chat (tool loop)
 │   │   ├── conversations/route.ts     # List threads / messages
 │   │   ├── drafts/[slug]/route.ts     # GET / PATCH a draft
@@ -65,15 +78,18 @@ V1 was the dashboard. **V2 is the storyteller** — the same dark, premium UI, p
 │   │   ├── drafts/page.tsx            # Drafts index
 │   │   └── page.tsx                   # JarvisFinance shell
 │   ├── home/page.tsx                  # JarvisHome shell
+│   ├── banks/return/page.tsx          # Plaid OAuth redirect completion (production BoA)
 │   ├── settings/personas/page.tsx     # Persona settings
 │   ├── layout.tsx                     # Root + AppShell
 │   └── page.tsx                       # Money dashboard (V1)
 ├── components/
 │   ├── AppShell.tsx, Sidebar.tsx, Dashboard.tsx, MetricCard.tsx, …  # V1 + nav
+│   ├── banks/                         # LinkBankButton, LinkedAccountsList, CsvImporter, plaidExchangeFlow
 │   ├── chat/                          # ChatPanel/Message/Input/Drawer/Page/Avatar/CostChip/ToolCallChip
 │   └── finance/                       # PortfolioTable, WatchlistCard, DraftList, DraftEditor
 ├── lib/
 │   ├── ai/                            # provider.ts, cost.ts, offline.ts, index.ts
+│   ├── banks/                         # plaid, encryption, sync, items, csv, categories
 │   ├── personas/                      # types, home, finance, index
 │   ├── tools/                         # transactions, portfolio, market, drafts, runner (registry)
 │   ├── market/                        # provider, yahoo, polygon, index
@@ -83,8 +99,15 @@ V1 was the dashboard. **V2 is the storyteller** — the same dark, premium UI, p
 │   └── types.ts, types-v2.ts          # Domain types
 └── supabase/
     ├── schema.sql + fix-rls-and-seed.sql   # V1
-    └── schema_v2.sql                        # V2 (holdings, watchlist, drafts, chat_*, persona_configs, usage_log)
+    ├── schema_v2.sql                        # V2 (holdings, watchlist, drafts, chat_*, persona_configs, usage_log)
+    └── schema_v3.sql + fix-v3-rls.sql       # V3 (linked_items + external_id / provider_account_id columns)
 ```
+
+The V3 bank-sync layer lives in `lib/banks/` (encryption, plaid client, items
+CRUD, sync engine, csv parser, category mapping) with API surface at
+`app/api/banks/*`, UI in `components/banks/`, and shared browser helpers in
+`components/banks/plaidExchangeFlow.ts` (used by the Money dashboard button and
+`/banks/return`).
 
 ## Setup
 
@@ -109,6 +132,11 @@ All optional — missing ones degrade gracefully.
 | `JARVIS_AI_PROVIDER` | Optional global override (`openai` \| `anthropic`) — useful when you only have one key |
 | `JARVIS_MARKET_PROVIDER` | `yahoo` (default, no key) or `polygon` |
 | `POLYGON_API_KEY` | Used by the Polygon market provider once implemented |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Plaid API credentials; create at <https://dashboard.plaid.com/team/keys> |
+| `PLAID_ENV` | `sandbox` (default, free, fake data) or `production` |
+| `PLAID_REDIRECT_URI` | Must match **`/banks/return`** on an **HTTPS** origin in Production (Plaid rejects `http://localhost` in Production). Use your deployed URL or **ngrok** locally. Register the same URL in Plaid Dashboard → Allowed redirect URIs. Sandbox can use `http://localhost:3000/banks/return`. |
+| `PLAID_WEBHOOK_URL` | URL Plaid pings on updates; in dev pair this with `ngrok http 3000` |
+| `JARVIS_ENCRYPTION_KEY` | 32-byte hex key (64 chars) used to AES-GCM-encrypt Plaid access tokens at rest |
 
 ## Applying the database
 
@@ -130,6 +158,54 @@ V2 (after V1):
 
 Both schemas are idempotent. RLS stays off in V2 (still single-user); the migration path is documented inside `schema_v2.sql` for when auth lands.
 
+V3 (Plaid + CSV bank sync, after V2):
+
+1. Supabase Dashboard → SQL Editor → New query.
+2. Paste [`supabase/schema_v3.sql`](./supabase/schema_v3.sql) → Run. This adds `linked_items` plus the `external_id` / `provider_account_id` columns to existing tables.
+3. Paste [`supabase/fix-v3-rls.sql`](./supabase/fix-v3-rls.sql) → Run (disables RLS on `linked_items` and adds any missing columns such as `last_error` if you created the table from an older `schema_v3`).
+4. `npm run check:banks` — verifies env vars, schema, encryption key, and Plaid connectivity.
+
+## Plaid read-only posture
+
+Jarvis does **not** move money, initiate payments, or modify your bank accounts. Plaid is used as a **read** path into balances/transactions/holdings metadata, and the app only **copies** that data into **your** Supabase project.
+
+**Link token products** (narrow consent): `transactions`, `investments` only — configured in [`lib/banks/plaid.ts`](./lib/banks/plaid.ts). We do **not** request Plaid Auth (ACH account/routing numbers), Payment Initiation, Transfer, Signal, or similar write-capable products.
+
+**Server-side Plaid calls in this repo** (via [`lib/banks/sync.ts`](./lib/banks/sync.ts), [`app/api/banks/exchange/route.ts`](./app/api/banks/exchange/route.ts), [`app/api/banks/items/[id]/route.ts`](./app/api/banks/items/[id]/route.ts), [`app/api/banks/webhook/route.ts`](./app/api/banks/webhook/route.ts)):
+
+| Plaid API | Purpose |
+| --- | --- |
+| `/link/token/create` | Start Link |
+| `/item/public_token/exchange` | Exchange one-time `public_token` for `access_token` |
+| `/accounts/get` | Account names, types, masks |
+| `/transactions/sync` | Incremental transaction history |
+| `/investments/holdings/get` | Brokerage positions |
+| `/institutions/get_by_id` | Institution display name |
+| `/item/remove` | Revoke this app’s Item at Plaid when you disconnect (does not close bank accounts) |
+| `/webhook_verification_key/get` | Verify webhook JWT signatures |
+
+**Writes:** only to your database (`transactions`, `holdings`, `accounts`, `linked_items`, encrypted token storage). Disconnect deletes the Plaid Item at Plaid and your `linked_items` row; it does not withdraw or transfer funds.
+
+## Bank sync runbook (Plaid)
+
+1. **Sign up at Plaid.** <https://dashboard.plaid.com/signup>. The free **Trial** tier covers 10 production Items with no expiry.
+2. **Grab keys.** Dashboard → Team Settings → Keys. Copy `client_id` plus the `Sandbox` (and later `Production`) secret.
+3. **Generate an encryption key once** and paste it into `.env.local`:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+4. **Apply the v3 schema** (see above) and run `npm run check:banks` until everything is green.
+5. **Sandbox flow.** With `PLAID_ENV=sandbox`, `npm run dev`, open the Money dashboard → "Connect bank" → pick "Bank of America (Plaid Test)" → login `user_good` / `pass_good`. You should see transactions land within a few seconds and the Connections card status flip to `active`.
+6. **Production switch.**
+   - **Plaid Dashboard:** Team → Keys → copy the **Production** secret (same `client_id` as Sandbox). Complete any company verification Plaid requires for Production access.
+   - **Allowed redirect URIs:** add `https://<your-domain>/banks/return` for a deployed app. For **local laptop + Production Plaid**, Plaid requires **HTTPS** — use **ngrok** (e.g. `https://abc123.ngrok-free.app/banks/return`) and register that exact URL; `http://localhost:...` is rejected (`INVALID_FIELD`). Must match `PLAID_REDIRECT_URI` exactly.
+   - **Webhooks:** set the webhook URL to `https://<your-domain>/api/banks/webhook` (or ngrok in dev).
+   - **`.env.local`:** `PLAID_ENV=production`, `PLAID_SECRET=<production secret>`, `PLAID_REDIRECT_URI`, `PLAID_WEBHOOK_URL` as above. Restart the dev server or redeploy.
+   - **Re-link:** Sandbox Items do not carry over. On the Money dashboard, use **Connect bank** again after switching env.
+7. **CSV fallback.** Any time Plaid isn't an option, the "CSV import" card on the Money dashboard accepts a Bank-of-America CSV (or any Date/Description/Amount export) and dedupes via the same `external_id` index.
+
 ## Scripts
 
 ```bash
@@ -140,6 +216,7 @@ npm run typecheck   # tsc --noEmit
 npm run lint        # next lint
 npm run check:db    # verify V1 schema + RLS + read/write against live Supabase
 npm run check:v2    # verify V2 schema + seeds + chat persistence + AI provider probe
+npm run check:banks # verify V3 (Plaid) env, schema, encryption key, /institutions/get ping
 npm run setup:live  # interactive V1 schema apply + smoke test
 ```
 
@@ -151,16 +228,15 @@ git push -u origin main
 # yahoo-finance2 is declared in serverComponentsExternalPackages — no extra config needed.
 ```
 
-## What's next (Phase 3 — deferred)
+## What's next (Phase 4 — deferred)
 
-Logged in [`jarvis_financial_storyteller_plan`](./.cursor/plans/jarvis_financial_storyteller_plan_1f3ea263.plan.md):
-
-1. **Auth + RLS** — magic-link, add `user_id` to every table, lock down policies.
+1. **Auth + RLS** — magic-link, add `user_id` to every table (including `linked_items`), lock down policies. Move encrypted access tokens to Supabase Vault once it's GA.
 2. **Publishing surface** — promote drafts to a public `posts` table; `/jarvis/[author]/[slug]` reader.
 3. **Comments / reactions / subscriptions** — social layer atop the storyteller.
-4. **Plaid integration** — replace manual transaction entry for the Money dashboard.
-5. **Real holdings history** — daily price snapshots for true point-in-time net worth.
-6. **Persona editor** — UI to override `persona_configs` (already in `schema_v2.sql`).
+4. **Background sync scheduler** — nightly cron / Supabase Edge Function to top up Plaid items, on top of the existing webhook + manual button.
+5. **Liabilities product** — credit-card APR, mortgage balance via Plaid Liabilities.
+6. **Real holdings history** — daily price snapshots for true point-in-time net worth.
+7. **Persona editor** — UI to override `persona_configs` (already in `schema_v2.sql`).
 
 ---
 

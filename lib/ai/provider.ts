@@ -24,6 +24,9 @@ export interface ResolvedModel {
   provider: ProviderName;
   modelId: string;
   model: LanguageModelV1;
+  /** True when the persona's declared provider wasn't configured and we
+   *  silently fell back to a different one. */
+  fellBack?: boolean;
 }
 
 /** Parse "openai:gpt-4o-mini" → { provider, modelId } */
@@ -54,18 +57,37 @@ export function isProviderConfigured(provider: ProviderName): boolean {
 }
 
 /**
- * Returns the resolved LanguageModel for the given spec, or null if the
- * corresponding API key is not set. Honours `JARVIS_AI_PROVIDER` as a
- * global override (useful for forcing a specific provider in dev).
+ * Returns the resolved LanguageModel for the given spec, or null if no
+ * provider is configured at all. Resolution order:
+ *
+ *   1. `JARVIS_AI_PROVIDER` env (if set) wins.
+ *   2. Otherwise use the provider declared in the persona spec.
+ *   3. If that provider isn't configured but another one is, silently fall
+ *      back to it with its default model. Lets single-key setups Just Work
+ *      (e.g. only OPENAI_API_KEY set + finance persona declaring Anthropic).
  */
 export function getModel(spec: string): ResolvedModel | null {
   const override = (process.env.JARVIS_AI_PROVIDER || "").toLowerCase();
   const parsed = parseModelSpec(spec);
-  const provider = (override || parsed.provider) as ProviderName;
-  const modelId =
-    override && override !== parsed.provider ? defaultModelFor(provider) : parsed.modelId;
 
-  if (!isProviderConfigured(provider)) return null;
+  let provider = (override || parsed.provider) as ProviderName;
+  let modelId =
+    override && override !== parsed.provider ? defaultModelFor(provider) : parsed.modelId;
+  let fellBack = false;
+
+  if (!isProviderConfigured(provider)) {
+    const alternates: ProviderName[] = ["openai", "anthropic"];
+    const alt = alternates.find((p) => p !== provider && isProviderConfigured(p));
+    if (!alt) return null;
+    fellBack = true;
+    const original = provider;
+    provider = alt;
+    modelId = defaultModelFor(alt);
+    console.warn(
+      `[jarvis/ai] no API key for ${original}; falling back to ${alt}:${modelId}. ` +
+        `Add the missing key (or set JARVIS_AI_PROVIDER) to silence this.`,
+    );
+  }
 
   let model: LanguageModelV1;
   if (provider === "anthropic") {
@@ -76,7 +98,7 @@ export function getModel(spec: string): ResolvedModel | null {
     model = client(modelId);
   }
 
-  return { provider, modelId, model };
+  return { provider, modelId, model, fellBack };
 }
 
 export function anyProviderConfigured(): boolean {

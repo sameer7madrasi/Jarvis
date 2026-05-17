@@ -38,6 +38,18 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** Short relative-ish timestamp ("Mar 12, 2:43 PM") used on status rows. */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /** First day of the month containing `d`, as a yyyy-mm-dd string. */
 export function monthKey(d: Date | string): string {
   const date = typeof d === "string" ? new Date(d) : d;

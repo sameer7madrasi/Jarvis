@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 
 import { MetricCard } from "./MetricCard";
+import { LinkedAccountsList } from "./banks/LinkedAccountsList";
+import { CsvImporter } from "./banks/CsvImporter";
 import { MindsetPanel } from "./MindsetPanel";
 import { TransactionForm } from "./TransactionForm";
 import { TransactionTable } from "./TransactionTable";
@@ -200,15 +202,19 @@ export function Dashboard() {
               </CardBody>
             </Card>
 
-            <Card className="h-fit">
-              <CardHeader>
-                <CardTitle>Add Transaction</CardTitle>
-                <Sparkles size={16} className="text-ink-300" />
-              </CardHeader>
-              <CardBody>
-                <TransactionForm accounts={accounts} onSubmit={handleAdd} />
-              </CardBody>
-            </Card>
+            <div className="space-y-6">
+              <LinkedAccountsList />
+              <CsvImporter accounts={accounts} onImported={() => window.location.reload()} />
+              <Card className="h-fit">
+                <CardHeader>
+                  <CardTitle>Add Transaction</CardTitle>
+                  <Sparkles size={16} className="text-ink-300" />
+                </CardHeader>
+                <CardBody>
+                  <TransactionForm accounts={accounts} onSubmit={handleAdd} />
+                </CardBody>
+              </Card>
+            </div>
           </section>
 
           <Footer />

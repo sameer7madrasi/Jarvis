@@ -130,17 +130,15 @@ export function ChatPanel({
         )}
       >
         <div className="mx-auto max-w-3xl">
-          <form data-jarvis-chat onSubmit={submitNow}>
-            <ChatInput
-              value={input}
-              onChange={setInput}
-              onSubmit={() => submitNow()}
-              onStop={stop}
-              isStreaming={isLoading}
-              placeholder={`Ask ${persona.displayName}…`}
-              accentHex={persona.hex}
-            />
-          </form>
+          <ChatInput
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submitNow()}
+            onStop={stop}
+            isStreaming={isLoading}
+            placeholder={`Ask ${persona.displayName}…`}
+            accentHex={persona.hex}
+          />
         </div>
       </div>
     </div>

@@ -9,12 +9,14 @@ import { HOME_TOOLS } from "./transactions";
 import { PORTFOLIO_TOOLS } from "./portfolio";
 import { MARKET_TOOLS } from "./market";
 import { DRAFT_TOOLS } from "./drafts";
+import { BANK_TOOLS } from "./banks";
 
 export const ALL_TOOLS: Record<string, Tool> = {
   ...HOME_TOOLS,
   ...PORTFOLIO_TOOLS,
   ...MARKET_TOOLS,
   ...DRAFT_TOOLS,
+  ...BANK_TOOLS,
 };
 
 /** Return only the tools whose names are in `allowed`. Unknown names are skipped. */

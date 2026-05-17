@@ -97,30 +97,44 @@ export const portfolioValue = tool({
 
 export const positionPnl = tool({
   description:
-    "Get the live P&L for a specific symbol in Sameer's portfolio. Use when he asks about a single ticker.",
+    "Get the live P&L for a specific symbol in Sameer's portfolio. Use when he asks about a single ticker he holds.",
   parameters: z.object({
     symbol: z.string().describe("Ticker symbol, e.g. 'NVDA'"),
   }),
   execute: async ({ symbol }) => {
-    const holdings = await fetchHoldings();
     const sym = symbol.toUpperCase();
-    const h = holdings.find((x) => x.symbol.toUpperCase() === sym);
-    if (!h) return { error: `No position found for ${sym}` };
-    const provider = getMarketProvider();
-    const q = await provider.quote(sym);
-    const market_value = q.price * h.qty;
-    const cost = h.cost_basis * h.qty;
-    const pnl = market_value - cost;
-    return {
-      symbol: sym,
-      qty: h.qty,
-      cost_basis: h.cost_basis,
-      price: round(q.price),
-      market_value: round(market_value),
-      unrealized_pnl: round(pnl),
-      unrealized_pnl_pct: cost > 0 ? Math.round((pnl / cost) * 10_000) / 10_000 : 0,
-      day_change_pct: round(q.change_pct),
-    };
+    try {
+      const holdings = await fetchHoldings();
+      const h = holdings.find((x) => x.symbol.toUpperCase() === sym);
+      if (!h) {
+        return {
+          ok: false as const,
+          symbol: sym,
+          error: `No position found for ${sym} in Sameer's portfolio`,
+        };
+      }
+      const q = await getMarketProvider().quote(sym);
+      const market_value = q.price * h.qty;
+      const cost = h.cost_basis * h.qty;
+      const pnl = market_value - cost;
+      return {
+        ok: true as const,
+        symbol: sym,
+        qty: h.qty,
+        cost_basis: h.cost_basis,
+        price: round(q.price),
+        market_value: round(market_value),
+        unrealized_pnl: round(pnl),
+        unrealized_pnl_pct: cost > 0 ? Math.round((pnl / cost) * 10_000) / 10_000 : 0,
+        day_change_pct: round(q.change_pct),
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        symbol: sym,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   },
 });
 

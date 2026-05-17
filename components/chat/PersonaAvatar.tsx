@@ -1,5 +1,7 @@
+import { Home, TrendingUp, type LucideIcon } from "lucide-react";
+
 import { cn } from "@/lib/utils";
-import type { Persona } from "@/lib/personas";
+import type { Persona, PersonaIconName } from "@/lib/personas";
 
 interface Props {
   persona: Persona;
@@ -13,9 +15,19 @@ const sizeMap = {
   lg: { box: "h-12 w-12", icon: 22 },
 } as const;
 
+/**
+ * Client-side resolver from a serializable icon name (declared on Persona)
+ * to the actual Lucide React component. Keeps the Persona type safe to pass
+ * across the server→client boundary.
+ */
+const ICONS: Record<PersonaIconName, LucideIcon> = {
+  home: Home,
+  "trending-up": TrendingUp,
+};
+
 export function PersonaAvatar({ persona, size = "md", className }: Props) {
   const { box, icon } = sizeMap[size];
-  const Icon = persona.Icon;
+  const Icon = ICONS[persona.iconName] ?? Home;
   return (
     <div
       className={cn(
