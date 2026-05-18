@@ -222,10 +222,12 @@ npm run setup:live  # interactive V1 schema apply + smoke test
 
 ## Deploying to Vercel
 
+Full solo-production checklist (GitHub import, env vars, Plaid redirect/webhook, smoke test): **[DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md)**.
+
 ```bash
 git push -u origin main
-# In Vercel project settings, add the env vars above.
-# yahoo-finance2 is declared in serverComponentsExternalPackages — no extra config needed.
+# Then follow DEPLOY_VERCEL.md — add the same env vars in Vercel Project → Settings.
+# yahoo-finance2 is in serverComponentsExternalPackages — no extra webpack config.
 ```
 
 ## What's next (Phase 4 — deferred)
