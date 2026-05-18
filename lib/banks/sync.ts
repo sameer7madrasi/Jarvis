@@ -47,6 +47,12 @@ export interface SyncReport {
   txRemoved: number;
   holdingsUpserted: number;
   error?: string;
+  /**
+   * True when the soft deadline cut the transactions loop short (Hobby 10s).
+   * The cursor was saved per-page so the next /api/banks/sync call (or Plaid
+   * webhook) resumes where this one left off.
+   */
+  partial?: boolean;
 }
 
 export async function syncItem(itemId: string): Promise<SyncReport> {
@@ -86,15 +92,33 @@ export async function syncItem(itemId: string): Promise<SyncReport> {
     report.txAdded = txReport.added;
     report.txModified = txReport.modified;
     report.txRemoved = txReport.removed;
+    report.partial = txReport.partial || undefined;
 
-    const holdReport = await syncHoldings(item, accountMap);
-    report.holdingsUpserted = holdReport.upserted;
-
+    // Mark the row synced as soon as transactions succeed. If the holdings
+    // phase below fails or times out, the user still sees a fresh sync time
+    // and the transactions data they actually care about.
     await updateItem(item.id, {
       status: "active",
       last_synced_at: new Date().toISOString(),
       last_error: null,
     });
+
+    // Holdings is treated as a non-fatal best-effort phase. Many institutions
+    // (e.g. BoA checking-only) don't expose investments at all, and the
+    // /investments/holdings/get call can itself take 5-15s — enough to blow
+    // the Hobby budget by itself. We log soft errors to last_error but keep
+    // status='active' so the dashboard isn't poisoned.
+    try {
+      const holdReport = await syncHoldings(item, accountMap);
+      report.holdingsUpserted = holdReport.upserted;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("[syncItem] holdings phase failed (non-fatal)", err);
+      report.error = message;
+      await updateItem(item.id, {
+        last_error: `holdings: ${message}`.slice(0, 500),
+      }).catch((e) => console.error("[syncItem] failed to persist holdings error:", e));
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     report.error = message;
@@ -239,7 +263,17 @@ interface TxSyncReport {
   added: number;
   modified: number;
   removed: number;
+  partial: boolean;
 }
+
+/**
+ * Wall-clock budget for a single transactions-sync invocation. Vercel Hobby
+ * kills functions at ~10s, so leaving ~3s of headroom (default 7000ms) lets
+ * us always persist the cursor and last_synced_at before the process is
+ * terminated. Bump via SYNC_SOFT_DEADLINE_MS in Vercel envs when you upgrade
+ * to Pro (e.g. 55000).
+ */
+const DEFAULT_SOFT_DEADLINE_MS = 7000;
 
 async function syncTransactions(
   item: LinkedItem & { access_token: string },
@@ -249,10 +283,24 @@ async function syncTransactions(
   const sb = getSupabase()!;
 
   let cursor: string | undefined = item.transactions_cursor ?? undefined;
-  const report: TxSyncReport = { added: 0, modified: 0, removed: 0 };
+  const report: TxSyncReport = { added: 0, modified: 0, removed: 0, partial: false };
   let hasMore = true;
 
+  const softDeadline = Number(
+    process.env.SYNC_SOFT_DEADLINE_MS ?? DEFAULT_SOFT_DEADLINE_MS,
+  );
+  const start = Date.now();
+
   while (hasMore) {
+    if (Date.now() - start > softDeadline) {
+      report.partial = true;
+      console.info(
+        `[syncTransactions] soft deadline hit at ${Date.now() - start}ms, ` +
+          `saving cursor and yielding (resume next invocation)`,
+      );
+      break;
+    }
+
     const req: TransactionsSyncRequest = {
       access_token: item.access_token,
       cursor,
@@ -261,24 +309,30 @@ async function syncTransactions(
     const res = await client.transactionsSync(req);
     const { added, modified, removed, next_cursor, has_more } = res.data;
 
-    for (const tx of added) {
-      const row = toJarvisTransaction(tx, accountMap);
-      if (!row) continue;
+    // Build all rows for this page, then issue a single bulk upsert per
+    // category. This collapses what was previously up to 500 sequential
+    // HTTP round-trips per page into 1-2, which is the dominant Hobby
+    // savings.
+    const addedRows = added
+      .map((tx) => toJarvisTransaction(tx, accountMap))
+      .filter((r): r is JarvisTxRow => r !== null);
+    if (addedRows.length > 0) {
       const { error } = await sb
         .from("transactions")
-        .upsert(row, { onConflict: "external_id", ignoreDuplicates: false });
+        .upsert(addedRows, { onConflict: "external_id", ignoreDuplicates: false });
       if (error) throw new Error(error.message);
-      report.added += 1;
+      report.added += addedRows.length;
     }
 
-    for (const tx of modified) {
-      const row = toJarvisTransaction(tx, accountMap);
-      if (!row) continue;
+    const modifiedRows = modified
+      .map((tx) => toJarvisTransaction(tx, accountMap))
+      .filter((r): r is JarvisTxRow => r !== null);
+    if (modifiedRows.length > 0) {
       const { error } = await sb
         .from("transactions")
-        .upsert(row, { onConflict: "external_id", ignoreDuplicates: false });
+        .upsert(modifiedRows, { onConflict: "external_id", ignoreDuplicates: false });
       if (error) throw new Error(error.message);
-      report.modified += 1;
+      report.modified += modifiedRows.length;
     }
 
     if (removed.length > 0) {
@@ -290,11 +344,14 @@ async function syncTransactions(
 
     cursor = next_cursor;
     hasMore = has_more;
+
+    // Persist progress every page so a future timeout doesn't reset us to
+    // the start. Cheap: one row update per page.
+    if (cursor !== undefined) {
+      await updateItem(item.id, { transactions_cursor: cursor });
+    }
   }
 
-  if (cursor !== undefined) {
-    await updateItem(item.id, { transactions_cursor: cursor });
-  }
   return report;
 }
 
@@ -371,31 +428,37 @@ async function syncHoldings(
 
   const securityById = new Map(securities.map((s) => [s.security_id, s]));
   const seenExternalIds: string[] = [];
-  let upserted = 0;
 
-  for (const h of plaidHoldings) {
+  // Build all holding rows up front, then issue a single bulk upsert. Same
+  // round-trip savings as the transactions batching above.
+  const rows = plaidHoldings.flatMap((h) => {
     const accountId = accountMap.get(h.account_id);
-    if (!accountId) continue;
+    if (!accountId) return [];
     const sec = securityById.get(h.security_id);
-    if (!sec) continue;
+    if (!sec) return [];
     const symbol = (sec.ticker_symbol ?? sec.name ?? "UNKNOWN").toUpperCase().slice(0, 24);
     const externalId = `plaid:${item.id}:${h.account_id}:${h.security_id}`;
     seenExternalIds.push(externalId);
 
     const costBasis = h.cost_basis ?? (h.institution_price ?? 0) * (h.quantity ?? 0);
-    const row = {
-      symbol,
-      qty: h.quantity ?? 0,
-      cost_basis: costBasis,
-      account_id: accountId,
-      external_id: externalId,
-    };
+    return [
+      {
+        symbol,
+        qty: h.quantity ?? 0,
+        cost_basis: costBasis,
+        account_id: accountId,
+        external_id: externalId,
+      },
+    ];
+  });
 
+  let upserted = 0;
+  if (rows.length > 0) {
     const { error } = await sb
       .from("holdings")
-      .upsert(row, { onConflict: "external_id", ignoreDuplicates: false });
+      .upsert(rows, { onConflict: "external_id", ignoreDuplicates: false });
     if (error) throw new Error(error.message);
-    upserted += 1;
+    upserted = rows.length;
   }
 
   // Delete holdings that were previously synced from this item but no
