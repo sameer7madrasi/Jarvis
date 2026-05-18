@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Building2, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function LinkedAccountsList({ className }: Props) {
+  const router = useRouter();
   const [items, setItems] = React.useState<LinkedItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -23,7 +25,7 @@ export function LinkedAccountsList({ className }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/banks/items");
+      const res = await fetch("/api/banks/items", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setItems(data.items ?? []);
@@ -37,6 +39,42 @@ export function LinkedAccountsList({ className }: Props) {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  // When OAuth completes, /banks/return redirects to /?bankLinked=1. Refetch
+  // the list (with a short retry window to ride out any Supabase replication
+  // lag), then strip the query param so a manual refresh doesn't loop. Read
+  // window.location.search directly so we don't need useSearchParams (which
+  // would require a Suspense boundary on the surrounding page).
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("bankLinked") !== "1") return;
+    let cancelled = false;
+    void (async () => {
+      for (let i = 0; i < 4 && !cancelled; i++) {
+        const res = await fetch("/api/banks/items", { cache: "no-store" }).catch(
+          () => null,
+        );
+        if (cancelled) return;
+        if (res && res.ok) {
+          const data: { items?: LinkedItem[] } = await res.json().catch(() => ({}));
+          if ((data.items?.length ?? 0) > 0) {
+            if (!cancelled) {
+              setItems(data.items ?? []);
+              setLoading(false);
+              setError(null);
+            }
+            break;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 750));
+      }
+      if (!cancelled) router.replace("/");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function syncOne(id: string) {
     setBusyId(id);

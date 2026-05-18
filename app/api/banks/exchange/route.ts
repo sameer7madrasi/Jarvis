@@ -68,6 +68,17 @@ export async function POST(req: Request) {
     // item_id. Treat that as success and avoid creating a duplicate row.
     const existing = await findItemByProviderItemId(item_id);
     if (existing) {
+      // Helpful when chasing "I just linked but Connections is empty" — if
+      // a stale row from local dev / another deploy is short-circuiting the
+      // fresh link, this is what you'll see in Vercel logs.
+      console.warn("[banks/exchange] already_linked short-circuit", {
+        local_id: existing.id,
+        provider_item_id: item_id,
+        institution_name: existing.institution_name,
+        status: existing.status,
+        last_synced_at: existing.last_synced_at,
+        last_error: existing.last_error,
+      });
       return NextResponse.json({
         item_id: existing.id,
         institution_name: existing.institution_name,
@@ -83,6 +94,12 @@ export async function POST(req: Request) {
       institution_id: institutionId,
       institution_name: institutionName,
       access_token,
+    });
+
+    console.info("[banks/exchange] linked_items row created", {
+      local_id: row.id,
+      provider_item_id: item_id,
+      institution_name: row.institution_name,
     });
 
     return NextResponse.json({

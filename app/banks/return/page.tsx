@@ -67,10 +67,15 @@ export default function PlaidOAuthReturnPage() {
   const onSuccess = React.useCallback(
     async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
       try {
-        await exchangePublicTokenAndInitialSync(publicToken, metadata);
+        const { itemId } = await exchangePublicTokenAndInitialSync(
+          publicToken,
+          metadata,
+        );
+        console.info("[banks/return] exchange ok, redirecting", { itemId });
         setPhase("done");
         router.replace("/?bankLinked=1");
       } catch (err) {
+        console.error("[banks/return] exchange failed", err);
         setPhase("error");
         setErrorMessage(err instanceof Error ? err.message : "Link failed");
       }

@@ -86,7 +86,11 @@ Strings must match Vercel env vars **character-for-character** (https, host, pat
 
 ## 6. Operational notes
 
-- **Function duration:** `app/api/banks/sync/route.ts` and `app/api/banks/csv/route.ts` use `maxDuration = 60`. On **Vercel Hobby**, the default serverless limit is **10s**; a large first Plaid sync may time out. **Upgrade to Pro** for longer limits, or run **Sync now** again if the first run partial-fails.
+- **Function duration on Hobby vs Pro:** `app/api/banks/sync/route.ts` and `app/api/banks/csv/route.ts` declare `maxDuration = 60`, but **Vercel Hobby caps every serverless function at ~10s** and ignores the hint. The initial Plaid backfill (90 days of transactions + investment holdings) routinely exceeds that, so on Hobby the sync request that runs immediately after linking a bank will return **504**. This is expected and handled:
+  - The OAuth completion flow in `components/banks/plaidExchangeFlow.ts` calls `/api/banks/sync` as fire-and-forget (`keepalive: true`) and returns as soon as `/api/banks/exchange` succeeds, so the user is redirected to `/?bankLinked=1` within a couple of seconds even if sync times out.
+  - Plaid then pushes `TRANSACTIONS:INITIAL_UPDATE` / `HISTORICAL_UPDATE` to `/api/banks/webhook` over the next 1–2 minutes; each webhook delivery triggers `syncItem` inside its own 10s budget, which is enough for incremental cursor pages.
+  - **Manual "Sync now"** on the Connections card still hits the 10s cap on Hobby; for a fully synchronous large sync, upgrade to **Pro** where `maxDuration = 60` is honored.
+- **If Connections still shows "No banks linked yet" right after OAuth:** check the Vercel function logs for `[banks/exchange]`. The route emits `linked_items row created` on first link and `already_linked short-circuit` when Plaid returns an existing `item_id` — the latter means a stale row (often from a local dev run) is hiding the fresh link. Resolve by `delete from linked_items where provider = 'plaid';` in Supabase and re-linking.
 - **Preview deployments:** usually omit Production Plaid secrets from Preview envs, or use Plaid Sandbox for Preview only.
 - **Never commit** `.env.local`; keep secrets only in Vercel and local files.
 
